@@ -1,0 +1,190 @@
+== LAUNCH & SETUP ==
+
+1. Single entry point (main.py) that cleans every file in the to_clean drop folder in one pass, then exits
+2. Windows launcher (run-clean.bat) that runs main.py and keeps the window open when finished
+3. All settings live in one config.py file
+4. Drop folder is created automatically if it does not exist
+5. Clean "No files found" message when the drop folder is empty
+
+== FILE LOADING ==
+
+6. Accepts csv, tsv, txt, xlsx, xls, xlsm and xlsb files
+7. Correct Excel engine chosen per extension (openpyxl, xlrd, pyxlsb)
+8. Clear "install this package" error when an Excel engine is missing
+9. Clear error when an Excel file cannot be opened
+10. Clear "file is empty" error for zero-byte text files
+11. Automatic text encoding detection (UTF-8 BOM, UTF-16 BOM, UTF-8, CP1252, Latin-1 fallback)
+12. Automatic separator detection for text files (tab, semicolon, pipe, comma)
+13. TSV files always read as tab-separated
+14. Cover/title sheet skipping: if the first sheet has no usable table, the most populated other sheet is read and a note is logged
+15. Only one sheet is read per workbook; the report lists all sheet names and which one was used
+16. Automatic header-row detection that skips filler rows above the real header
+17. Header detection refuses to swallow a dense first data row as the header
+18. Filler rows removed from the top are counted and reported
+19. Original table kept untouched for before/after comparison
+20. Raw number display capture from Excel number formats so fixed decimals can be restored
+21. Raw number display capture from numeric text in Excel and CSV files (trailing zeros)
+
+== COLUMNS ==
+
+22. Unnamed columns are flagged BLUE for review (with a note), never removed
+23. Duplicate-named columns in the source are flagged and logged
+24. Column names standardised: lowercase, underscore-separated, trimmed
+25. Numeric headers converted to text names
+26. Column names that collide after standardisation get .1, .2 suffixes without clashing with existing names
+
+== JUNK ROWS ==
+
+27. Repeated header rows inside the data removed (conservative safeguards, never empties a file)
+28. Total and subtotal rows removed (high-confidence only, needs a total label plus 2 populated cells including a number)
+
+== VALUE CLEANING ==
+
+29. Leading/trailing whitespace trimmed from all text values
+30. Encoding repair: mojibake fixed
+31. Encoding repair: smart quotes, non-breaking spaces, en/em dashes, ellipsis and BOM characters replaced
+32. Encoding repair: Unicode NFKC normalisation
+33. Phone numbers converted to digits only in phone-named columns
+34. UK phone normalisation: +44 and 0044 become a leading 0, 10-digit numbers starting 7 get a leading 0
+35. Phone column safeguard: column left untouched unless at least 50% of values look like phone numbers, with the reason logged
+36. Disguised blanks (N/A, n/a, NA, TBD, unknown, NULL, None, empty text, -, ...) are NEVER removed or turned into blanks: they are kept and every cell holding one is flagged PURPLE (the old conversion is commented out in steps/values.py; pandas is also stopped from silently blanking N/A, NA, n/a, NULL and None while loading)
+37. Count of rows with at least one missing field logged
+38. Casing standardisation by column name: name, country, status to title case; email to lower case
+39. Casing rules use whole-word column matching so columns like username are not altered
+40. Category value mapping for country and status columns onto canonical values
+
+== DUPLICATES, BLANKS & COLUMN FLAGS ==
+
+41. Copies of the same field (col / col.1 / col_alt_N) are flagged BLUE only when their data is the same in every row, ignoring case (Acme / acme / ACME count as the same value). A blank against a value counts as a difference. A similar name alone never flags anything. Nothing is removed
+42. Duplicate columns that differ are kept and renamed col_alt_N
+43. Duplicate rows removed when every value is the same, ignoring case (Acme / acme / ACME count as the same value); the first occurrence is kept as written
+44. Duplicate app numbers collapsed to one row, keeping the row with the longest description
+45. App-number collapse only runs when both an app-number column and a description column exist
+46. App-number column matched by exact name only (app, app_number, app_num, app_no)
+47. App-number groups with no description in any row are kept and flagged
+48. Blank app numbers are never grouped together
+49. Several description columns are combined by total text length when choosing the row to keep
+50. Ties in description length keep the first row
+52. Fully blank rows removed
+53. Fully blank columns removed
+54. Columns with identical content under DIFFERENT names (identical wherever both are populated, ignoring case) detected; nothing removed, both headers flagged BLUE
+55. Headers of all description columns flagged BLUE when the file has more than one
+
+== DATES ==
+
+56. Date column detection using a match-rate threshold, skipping numeric-looking columns
+57. Dates read day-first (UK order)
+58. Year-first dates (ISO style) always read as year-month-day, never swapped
+59. Dates written as dd/mm/yyyy with a four-digit year
+60. Dates written to Excel as real date cells formatted DD/MM/YYYY
+61. Fast vectorised date parsing with a slower per-cell fallback
+62. Unparseable dates kept as their original text and flagged RED
+63. Blank cells in date columns handled without errors
+
+== DATA TYPES ==
+
+64. Column type inference in a fixed priority order: ID, email, phone, currency, percentage, boolean, price, measurement, category, text
+65. ID columns kept as text so leading zeros survive
+66. ID detection by name keywords, leading zeros, or near-total uniqueness
+67. Email columns kept as lower-case text
+68. Phone columns kept as text
+69. Currency columns converted to numbers and tracked as money columns
+70. Percentage columns converted to numbers with the % stripped
+71. Flag columns standardised to Y/N: true/t/yes/y/1/on -> Y and false/f/no/n/0/off -> N, compared lower-case so any casing works; any mix of those words in one column; blanks stay blank (see also 175-179)
+72. Price columns detected by whole-word name match with an exclusion list (quantity, weight, cost centre, exchange rate and similar are not prices)
+73. Compound price headers recognised (ending in price, cost, amount, total)
+74. Price columns converted to numbers
+75. Measurement columns (height, weight, length, width, depth, diameter, thickness, volume, dimension, qty, quantity) converted to real numbers
+76. Measurement and price columns left as text if fewer than half the values convert
+77. Low-variety columns converted to category type
+78. Everything else kept as free text
+79. Number parsing handles currency symbols, thousands separators, European decimal commas, bracketed negatives, trailing minus and Unicode minus signs
+80. Values that fail conversion keep their original value and are flagged RED, never dropped
+81. Entirely blank columns and reserved columns skipped during type inference
+
+== CELL FLAGGING ==
+
+117. Zero and negative values in price columns flagged on the separate Price Anomalies sheet (YELLOW is reserved for price anomalies only)
+118. Duplicate values in the APP column flagged on their own ID Duplicates sheet (PINK -- pink is reserved for APP)
+118b. Blank or invalid/unexpected (placeholder text such as N/A, TBD, unknown) APP values flagged on their own ID Anomalies sheet (LAVENDER)
+119. Explicit log entry when the APP duplicate check, APP invalid check, or price check is skipped because no matching column exists
+120. Missing cells flagged ORANGE; Missing Values also includes an ID (context) column for row traceability
+121. Missing/blank or placeholder APP cells are excluded from both the ORANGE Missing Values mask and the PURPLE Disguised Blanks mask, so they appear only on ID Anomalies
+122. Missing values in numeric columns preserved as missing and logged
+123. Price anomalies, duplicate APP values, invalid/blank APP values, and duplicate value fields each use their own colour and sheet; general missing/disguised-blank sheets retain APP ID as context without recolouring the APP cell
+
+== DATA LOSS SAFETY & AUDIT ==
+
+124. Data-loss guard on every value-only step: a populated value becoming blank stops the file with a loud error
+125. Data loss limited to allowed categories: exact duplicates, duplicate app numbers, fully blank rows/columns, top filler rows, repeated headers and total rows (disguised blanks are no longer removed, only flagged PURPLE)
+126. Step-by-step audit log recorded for every file
+127. Original-vs-final comparison logged: rows, columns, columns added, columns removed, data type changes
+
+== EXCEL OUTPUT ==
+
+127b. Generated source_file field added to the Cleaned sheet with the input file name on every row
+127c. Generated Fields sheet documents cleaner-created fields such as source_file
+128. Cleaned output written as a real .xlsx file
+129. Bold header row
+130. Money columns shown with 2 decimals
+131. Non-money numbers shown as the raw file showed them, with fixed decimals preserved where the source had them
+132. No thousands commas, no rounding of values
+133. Column widths auto-sized (capped at 40)
+134. Duplicate value fields are shown on a separate green Duplicate Values sheet
+135. Duplicate APP values are shown on a separate pink ID Duplicates sheet (pink is reserved for APP)
+135b. Blank/invalid/unexpected APP values are shown on a separate lavender ID Anomalies sheet
+136. Price anomalies are shown on a separate yellow Price Anomalies sheet (the only sheet that uses yellow)
+136b. Missing Values and Disguised Blanks include an ID (context) column when an exact APP field exists; the APP cell remains governed by ID Anomalies logic
+136c. The Raw tab is left uncoloured on purpose, freeing green up for the Duplicate Values sheet
+
+== OUTPUT FOLDERS & FILES ==
+
+136. Output folder created per file in Downloads named "<file> - CLEANED"
+137. Cleaned workbook named <file>_cleaned.xlsx
+138. Repeat runs never overwrite earlier output: folders get (1), (2) suffixes
+139. final_file_log.txt written next to each cleaned file
+
+== REPORT (final_file_log.txt) ==
+
+140. Report header with cleaner version number (set in config), source file name and generation time
+141. Report section SOURCE FILE: name, type, size, last modified, SHA-256 hash, input encoding, sheet information, output encoding
+142. Report section DATASET OVERVIEW: rows, columns, remaining duplicate rows, missing cells and percentage, memory usage, processing time
+143. Report section COLUMN DETAILS: per-column type, missing count and percentage, unique count, min/max/mean, true/false counts, most common value
+144. Report section BEFORE vs AFTER COMPARISON: row and column changes, blank and duplicate counts, disguised blanks kept and flagged PURPLE, whitespace fixes, filler rows, data loss guard status, data type changes
+145. Report section THINGS TO REVIEW: colour legend, cell counts per colour, reclassified-cell note, price and ID check status, and every flagged audit entry
+153. Numbered AUDIT LOG with step count at the bottom of the report
+
+== BATCH RUN & ERROR HANDLING ==
+
+154. Console messages per file: Processing, Success with output folder, or Failed with reason
+155. Final console summary of how many files succeeded
+156. One bad file never stops the batch; errors are caught per file
+157. Source file removed from to_clean after successful cleaning
+158. Warning instead of a crash if the source file is locked and cannot be removed
+159. Failed files are left in to_clean
+
+== EXCEL MACROS ==
+
+160. Excel macro (uni-cleaner-vba-macro): copies the open workbook into the to_clean folder
+161. Excel macro (uni-cleaner-vba-macro-2): exports the active sheet as a new .xlsx into the to_clean folder, named "<workbook> - <sheet>"
+162. Macro 2 detects an active filter (table or sheet AutoFilter) and exports only the visible rows when filtered
+163. Macro 2 removes the filter, forces white background and black text on the export
+164. Macro 2 replaces any earlier export with the same name
+165. Macro 2 sanitises illegal file-name characters and limits the sheet name to 31 characters
+166. Macro 2 shows a success or failure message box and restores Excel settings on error
+167. Keyboard shortcuts documented: Ctrl+Shift+P to send the file to to_clean, Ctrl+Alt+] to run the cleaner
+
+== PROJECT STRUCTURE, TESTS & TOOLING ==
+
+168. Modular package (uni_cleaner) with ordered step lists for structure and type phases
+169. Every step uses the same step(df, ctx) signature with a shared run context
+170. New cleaning steps added by writing one function and adding one line to a step list
+171. Package README with old-to-new module map and feature documentation
+172. Unit test suite covering APP rules, dates, loader bugs and number formatting
+174. VS Code debug launch configuration for running the current file
+175. 0, FALSE and a blank are three different values in Excel files as well as CSV: a real Excel TRUE/FALSE cell is read back as a boolean even when its column also holds blanks or numbers (pandas used to turn it into 1.0/0.0)
+176. A FALSE/TRUE is never flagged BLUE and never turned into 0/1. In a flag column it becomes N/Y; kept inside a price column of numbers it stays FALSE/TRUE and is flagged RED (not a price)
+177. Flag columns are recognised even when their name contains an ID word (app_approved, id_verified, has_code), when they hold only one side (all Yes / all FALSE), and when 1/0 values sit in a column with blanks; exact APP number columns are never treated as flags
+178. A column of mostly flag words plus a stray value (yes / no / maybe) is still converted: the flag words become Y/N and each stray value is kept as-is and flagged RED (threshold: FLAG_MIN_MATCH_RATE in config.py)
+179. Columns with their own mapping in CATEGORY_MAPPINGS (status: Active / Inactive) are not turned into Y/N
+180. Test suite for the blank / zero / FALSE rules and Y/N flag standardisation, in Excel and CSV (tests/test_flags_and_booleans.py)
